@@ -16,7 +16,7 @@ CORS(app)
 # It is recommended to download your model weights and place them in the same directory.
 try:
     print("Loading YOLOv8 model...")
-    model = YOLO("yolov8n.pt")
+    model = YOLO("model5.pt")
     print("YOLOv8 model loaded successfully.")
 except Exception as e:
     print(f"Error loading model: {e}")
