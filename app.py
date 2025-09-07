@@ -14,19 +14,14 @@ app = Flask(__name__)
 CORS(app)
 print("Flask app initialized.")
 
-# Load the YOLOv8 model once globally
-# It is recommended to download your model weights and place them in the same directory.
+# Load the YOLOv8 nano model for pose estimation, which is very lightweight
+# It is capable of detecting the 'person' class efficiently.
 try:
     print("Checking current working directory:", os.getcwd())
-    print("Loading YOLOv8 model...")
-    # Add a check to see if the model file exists
-    if os.path.exists("model5.pt"):
-        print("model5.pt found!")
-        model = YOLO("model5.pt")
-        print("YOLOv8 model loaded successfully.")
-    else:
-        print("model5.pt not found in the current directory.")
-        model = None
+    print("Loading YOLOv8 nano pose model...")
+    # The 'yolov8n-pose.pt' model is ideal for detecting people with low overhead.
+    model = YOLO("yolov8n-pose.pt")
+    print("YOLOv8 nano pose model loaded successfully.")
 except Exception as e:
     print(f"ERROR: Exception during model loading: {e}")
     model = None
@@ -38,7 +33,7 @@ HTML_CONTENT = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YOLOv8 Object Detection</title>
+    <title>Lightweight Human Presence Detector</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
@@ -59,8 +54,8 @@ HTML_CONTENT = """
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center">
     <div class="container bg-white shadow-xl rounded-2xl p-6 text-center">
-        <h1 class="text-3xl font-bold mb-6 text-gray-800">YOLOv8 Object Detection API</h1>
-        <p class="mb-4 text-gray-600">Upload an image below to detect objects. The results will be displayed as a JSON response.</p>
+        <h1 class="text-3xl font-bold mb-6 text-gray-800">Lightweight Human Presence Detector</h1>
+        <p class="mb-4 text-gray-600">Upload an image below to detect human presence. This is a resource-light version.</p>
         
         <div class="flex flex-col items-center space-y-4">
             <div class="w-full flex justify-center">
@@ -71,7 +66,7 @@ HTML_CONTENT = """
             </div>
             <img id="imagePreview" class="rounded-lg shadow-md" style="display: none;">
             <button id="detectButton" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-full transition duration-300 shadow-lg" style="display: none;">
-                Detect Objects
+                Detect Presence
             </button>
         </div>
         
@@ -159,58 +154,66 @@ def index():
 @app.route('/api/predict', methods=['POST'])
 def predict():
     """
-    API endpoint to perform YOLOv8 object detection on an uploaded image.
+    API endpoint to perform human presence detection on an uploaded image.
     """
     print("Received a request to /api/predict")
     if model is None:
         print("ERROR: Model is not loaded. Returning 503.")
         return jsonify({"error": "Model not loaded. Service is unavailable."}), 503
 
-    # Check if the 'image' file is present in the request
     if 'image' not in request.files:
         print("ERROR: No image file provided in request.")
         return jsonify({"error": "No image file provided."}), 400
 
     image_file = request.files['image']
 
-    # Check if the file is empty
     if image_file.filename == '':
         print("ERROR: Empty file provided.")
         return jsonify({"error": "No selected file."}), 400
 
     try:
         print("Reading image file from request...")
-        # Read the image from the file stream and convert it to a format YOLO can use
         image_bytes = image_file.read()
         image = Image.open(io.BytesIO(image_bytes))
         print("Image read successfully.")
 
         print("Performing prediction...")
-        # Perform the prediction
-        results = model(image)
+        # We only need to detect the 'person' class
+        # The 'classes=0' argument tells the model to only detect the first class in its list, which is 'person' for this model.
+        results = model(image, classes=[0], conf=0.5) 
         print("Prediction complete.")
 
         # Process the results into a JSON-serializable format
         processed_results = []
+        person_count = 0
         for result in results:
             for box in result.boxes:
-                # Extract and serialize the data
-                processed_results.append({
-                    'class_id': int(box.cls),
-                    'class_name': model.names[int(box.cls)],
-                    'confidence': float(box.conf),
-                    'bounding_box': box.xyxy[0].tolist()
-                })
+                # Only check for the 'person' class
+                class_id = int(box.cls)
+                class_name = model.names[class_id]
+                if class_name == 'person':
+                    person_count += 1
+                    processed_results.append({
+                        'class_name': class_name,
+                        'confidence': float(box.conf),
+                        'bounding_box': box.xyxy[0].tolist()
+                    })
+
+        final_response = {
+            'status': 'success',
+            'person_detected': person_count > 0,
+            'person_count': person_count,
+            'detections': processed_results
+        }
         print("Results processed into JSON.")
         
-        return jsonify(processed_results)
+        return jsonify(final_response)
 
     except Exception as e:
         print(f"ERROR: Prediction error during API call: {e}")
         return jsonify({"error": f"An error occurred during prediction: {e}"}), 500
 
 if __name__ == '__main__':
-    # When deploying on Render, the 'PORT' environment variable is automatically set.
     print(f"Getting port from environment variable. PORT is: {os.environ.get('PORT', '5000')}")
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
