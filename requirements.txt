@@ -1,6 +1,4 @@
+google-cloud-vision
 flask
 flask-cors
-ultralytics
-numpy
-Pillow
 gunicorn
