@@ -15,7 +15,7 @@ HTML_CONTENT = """
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-1.0">
     <title>In-Browser Human Presence Detector</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -56,13 +56,19 @@ HTML_CONTENT = """
         const ctx = webcamCanvas.getContext('2d');
 
         let model = null;
+        webcamButton.disabled = true;
 
         // Load the face detection model
         async function loadModel() {
             messageDiv.textContent = 'Loading TensorFlow.js and Face-Detection model...';
             try {
-                const detector = await faceDetection.createDetector(faceDetection.SupportedModels.BlazeFace);
-                model = detector;
+                const model = faceDetection.SupportedModels.MediaPipeFaceDetector;
+                const detectorConfig = {
+                    runtime: 'tfjs',
+                    maxFaces: 1,
+                    modelType: 'short',
+                };
+                const detector = await faceDetection.createDetector(model, detectorConfig);
                 messageDiv.textContent = 'Model loaded successfully. Ready to start webcam.';
                 webcamButton.disabled = false;
             } catch (error) {
