@@ -177,10 +177,17 @@ def detect_person_api():
         if len(boxes) > 0:
             person_detected = True
 
+        # Check if boxes is a NumPy array before calling tolist()
+        if not isinstance(boxes, np.ndarray):
+            # If it's not an array, it's likely a tuple from an OpenCV bug
+            bounding_boxes = list(boxes)
+        else:
+            bounding_boxes = boxes.tolist()
+
         return jsonify({
             "person_detected": person_detected,
             "number_of_people": len(boxes),
-            "bounding_boxes": boxes.tolist()
+            "bounding_boxes": bounding_boxes
         })
 
     except Exception as e:
