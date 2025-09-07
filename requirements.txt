@@ -2,3 +2,4 @@ flask
 gunicorn
 opencv-python
 pillow
+flasck_cors
