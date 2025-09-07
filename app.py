@@ -9,17 +9,26 @@ import numpy as np
 from PIL import Image
 
 # Initialize Flask app
+print("Initializing Flask app...")
 app = Flask(__name__)
 CORS(app)
+print("Flask app initialized.")
 
 # Load the YOLOv8 model once globally
 # It is recommended to download your model weights and place them in the same directory.
 try:
+    print("Checking current working directory:", os.getcwd())
     print("Loading YOLOv8 model...")
-    model = YOLO("model5.pt")
-    print("YOLOv8 model loaded successfully.")
+    # Add a check to see if the model file exists
+    if os.path.exists("model5.pt"):
+        print("model5.pt found!")
+        model = YOLO("model5.pt")
+        print("YOLOv8 model loaded successfully.")
+    else:
+        print("model5.pt not found in the current directory.")
+        model = None
 except Exception as e:
-    print(f"Error loading model: {e}")
+    print(f"ERROR: Exception during model loading: {e}")
     model = None
 
 # HTML and JavaScript for the frontend
@@ -152,26 +161,34 @@ def predict():
     """
     API endpoint to perform YOLOv8 object detection on an uploaded image.
     """
+    print("Received a request to /api/predict")
     if model is None:
+        print("ERROR: Model is not loaded. Returning 503.")
         return jsonify({"error": "Model not loaded. Service is unavailable."}), 503
 
     # Check if the 'image' file is present in the request
     if 'image' not in request.files:
+        print("ERROR: No image file provided in request.")
         return jsonify({"error": "No image file provided."}), 400
 
     image_file = request.files['image']
 
     # Check if the file is empty
     if image_file.filename == '':
+        print("ERROR: Empty file provided.")
         return jsonify({"error": "No selected file."}), 400
 
     try:
+        print("Reading image file from request...")
         # Read the image from the file stream and convert it to a format YOLO can use
         image_bytes = image_file.read()
         image = Image.open(io.BytesIO(image_bytes))
+        print("Image read successfully.")
 
+        print("Performing prediction...")
         # Perform the prediction
         results = model(image)
+        print("Prediction complete.")
 
         # Process the results into a JSON-serializable format
         processed_results = []
@@ -184,14 +201,16 @@ def predict():
                     'confidence': float(box.conf),
                     'bounding_box': box.xyxy[0].tolist()
                 })
+        print("Results processed into JSON.")
         
         return jsonify(processed_results)
 
     except Exception as e:
-        print(f"Prediction error: {e}")
-        return jsonify({"error": "An error occurred during prediction."}), 500
+        print(f"ERROR: Prediction error during API call: {e}")
+        return jsonify({"error": f"An error occurred during prediction: {e}"}), 500
 
 if __name__ == '__main__':
     # When deploying on Render, the 'PORT' environment variable is automatically set.
+    print(f"Getting port from environment variable. PORT is: {os.environ.get('PORT', '5000')}")
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
