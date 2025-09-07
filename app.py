@@ -4,6 +4,7 @@ import json
 from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
 from google.cloud import vision_v1
+from google.oauth2.service_account import Credentials
 
 # Initialize Flask app
 print("Initializing Flask app...")
@@ -11,13 +12,22 @@ app = Flask(__name__)
 CORS(app)
 print("Flask app initialized.")
 
-# Initialize the Google Cloud Vision client
-# Make sure your GOOGLE_APPLICATION_CREDENTIALS environment variable
-# is set in your Render service to the path of your service account key file.
+# Initialize the Google Cloud Vision client using credentials from a string
 try:
     print("Initializing Google Cloud Vision client...")
-    vision_client = vision_v1.ImageAnnotatorClient()
+    
+    # Read the JSON key from the environment variable
+    creds_json = os.environ.get("GCP_SERVICE_ACCOUNT_KEY")
+    if not creds_json:
+        raise ValueError("GCP_SERVICE_ACCOUNT_KEY environment variable not set.")
+    
+    # Convert the JSON string to a credentials object
+    credentials = Credentials.from_service_account_info(json.loads(creds_json))
+    
+    # Initialize the client with the loaded credentials
+    vision_client = vision_v1.ImageAnnotatorClient(credentials=credentials)
     print("Google Cloud Vision client initialized successfully.")
+    
 except Exception as e:
     print(f"ERROR: Exception during Vision client initialization: {e}")
     vision_client = None
