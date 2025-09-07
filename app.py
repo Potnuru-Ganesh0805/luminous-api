@@ -1,12 +1,9 @@
 import os
 import io
-import uuid
 import json
 from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
-from ultralytics import YOLO
-import numpy as np
-from PIL import Image
+from google.cloud import vision_v1
 
 # Initialize Flask app
 print("Initializing Flask app...")
@@ -14,17 +11,16 @@ app = Flask(__name__)
 CORS(app)
 print("Flask app initialized.")
 
-# Load the YOLOv8 nano model for pose estimation, which is very lightweight
-# It is capable of detecting the 'person' class efficiently.
+# Initialize the Google Cloud Vision client
+# Make sure your GOOGLE_APPLICATION_CREDENTIALS environment variable
+# is set in your Render service to the path of your service account key file.
 try:
-    print("Checking current working directory:", os.getcwd())
-    print("Loading YOLOv8 nano pose model...")
-    # The 'yolov8n-pose.pt' model is ideal for detecting people with low overhead.
-    model = YOLO("yolov8n-pose.pt")
-    print("YOLOv8 nano pose model loaded successfully.")
+    print("Initializing Google Cloud Vision client...")
+    vision_client = vision_v1.ImageAnnotatorClient()
+    print("Google Cloud Vision client initialized successfully.")
 except Exception as e:
-    print(f"ERROR: Exception during model loading: {e}")
-    model = None
+    print(f"ERROR: Exception during Vision client initialization: {e}")
+    vision_client = None
 
 # HTML and JavaScript for the frontend
 HTML_CONTENT = """
@@ -55,7 +51,7 @@ HTML_CONTENT = """
 <body class="bg-gray-100 min-h-screen flex items-center justify-center">
     <div class="container bg-white shadow-xl rounded-2xl p-6 text-center">
         <h1 class="text-3xl font-bold mb-6 text-gray-800">Lightweight Human Presence Detector</h1>
-        <p class="mb-4 text-gray-600">Upload an image below to detect human presence. This is a resource-light version.</p>
+        <p class="mb-4 text-gray-600">Upload an image below to detect human presence using a cloud-based API.</p>
         
         <div class="flex flex-col items-center space-y-4">
             <div class="w-full flex justify-center">
@@ -154,12 +150,12 @@ def index():
 @app.route('/api/predict', methods=['POST'])
 def predict():
     """
-    API endpoint to perform human presence detection on an uploaded image.
+    API endpoint to perform human presence detection using Google Cloud Vision.
     """
     print("Received a request to /api/predict")
-    if model is None:
-        print("ERROR: Model is not loaded. Returning 503.")
-        return jsonify({"error": "Model not loaded. Service is unavailable."}), 503
+    if vision_client is None:
+        print("ERROR: Vision client is not loaded. Returning 503.")
+        return jsonify({"error": "Vision API service is unavailable."}), 503
 
     if 'image' not in request.files:
         print("ERROR: No image file provided in request.")
@@ -173,31 +169,30 @@ def predict():
 
     try:
         print("Reading image file from request...")
-        image_bytes = image_file.read()
-        image = Image.open(io.BytesIO(image_bytes))
+        content = image_file.read()
+        image = vision_v1.Image(content=content)
         print("Image read successfully.")
 
-        print("Performing prediction...")
-        # We only need to detect the 'person' class
-        # The 'classes=0' argument tells the model to only detect the first class in its list, which is 'person' for this model.
-        results = model(image, classes=[0], conf=0.5) 
+        print("Performing prediction with Google Cloud Vision...")
+        response = vision_client.object_localization(image=image)
         print("Prediction complete.")
 
         # Process the results into a JSON-serializable format
         processed_results = []
         person_count = 0
-        for result in results:
-            for box in result.boxes:
-                # Only check for the 'person' class
-                class_id = int(box.cls)
-                class_name = model.names[class_id]
-                if class_name == 'person':
-                    person_count += 1
-                    processed_results.append({
-                        'class_name': class_name,
-                        'confidence': float(box.conf),
-                        'bounding_box': box.xyxy[0].tolist()
-                    })
+        for obj in response.localized_object_annotations:
+            if obj.name.lower() == 'person':
+                person_count += 1
+                processed_results.append({
+                    'class_name': obj.name,
+                    'confidence': obj.score,
+                    'bounding_box': [
+                        obj.bounding_poly.normalized_vertices[0].x,
+                        obj.bounding_poly.normalized_vertices[0].y,
+                        obj.bounding_poly.normalized_vertices[2].x,
+                        obj.bounding_poly.normalized_vertices[2].y,
+                    ]
+                })
 
         final_response = {
             'status': 'success',
@@ -210,8 +205,8 @@ def predict():
         return jsonify(final_response)
 
     except Exception as e:
-        print(f"ERROR: Prediction error during API call: {e}")
-        return jsonify({"error": f"An error occurred during prediction: {e}"}), 500
+        print(f"ERROR: Vision API call failed: {e}")
+        return jsonify({"error": f"An error occurred during API call: {e}"}), 500
 
 if __name__ == '__main__':
     print(f"Getting port from environment variable. PORT is: {os.environ.get('PORT', '5000')}")
